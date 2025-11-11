@@ -1,0 +1,247 @@
+Assignment 4 — Ansible Variable Management, Templating, and Roles
+🏗️ 0. Prerequisites (Windows + AWS + WSL Setup)
+Step 0.1 — Install WSL (Ubuntu)
+
+Open PowerShell (Admin) →
+
+wsl --install -d Ubuntu
+
+
+Restart PC → open Ubuntu → create username & password.
+
+Update packages:
+
+sudo apt update && sudo apt upgrade -y
+
+☁️ 1. AWS Instance Creation
+Step 1.1 — Launch EC2 Instances
+
+You’ll need 3 instances (for Set A) and 2 more (for Set C testing roles cross-OS).
+
+Purpose	OS	Count	Type
+Control Node (Ansible)	Ubuntu 22.04 LTS	1	t2.micro
+Managed Nodes (Web servers)	Ubuntu 22.04 LTS	2	t2.micro
+Extra (For Set C)	CentOS Stream 9	1	t2.micro
+
+✅ Total = 4 instances (reuse control node for all sets)
+
+Step 1.2 — Security Group Rules
+
+Inbound rules:
+
+Type	Port	Source
+SSH	22	My IP
+HTTP	80	0.0.0.0/0
+
+Download the .pem key (e.g., ansible-key.pem).
+
+Step 1.3 — Configure SSH Access from Windows
+
+Move your .pem file to WSL Ubuntu:
+
+mkdir -p ~/.ssh
+cp /mnt/c/Users/<YourName>/Downloads/ansible-key.pem ~/.ssh/
+chmod 400 ~/.ssh/ansible-key.pem
+
+
+Test SSH into each instance:
+
+ssh -i ~/.ssh/ansible-key.pem ubuntu@<public-ip>
+
+⚙️ 2. Install Ansible on Control Node
+
+On Ubuntu (WSL or your AWS control node):
+
+sudo apt update
+sudo apt install ansible -y
+ansible --version
+
+🧩 SET A — Ansible Variables and Basic Playbooks
+Step A1 — Create Project Structure
+mkdir ~/assignment4 && cd ~/assignment4
+mkdir group_vars host_vars
+
+Step A2 — Create Configuration File
+nano ansible.cfg
+
+[defaults]
+inventory = ./inventory
+private_key_file = ~/.ssh/ansible-key.pem
+host_key_checking = False
+
+Step A3 — Create Inventory File
+nano inventory
+
+[webservers]
+web1 ansible_host=<web1-public-ip> ansible_user=ubuntu
+web2 ansible_host=<web2-public-ip> ansible_user=ubuntu
+
+
+Test connectivity:
+
+ansible all -m ping
+
+
+✅ Expected: pong from each host.
+
+Step A4 — Define Variables
+
+group_vars/all.yml
+
+username: devuser
+comment: "Common application user"
+
+
+host_vars/web1.yml
+
+username: adminuser
+comment: "Admin for web1"
+
+Step A5 — Create Playbook to Use Variables
+nano create-user.yml
+
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Create user with variables
+      ansible.builtin.user:
+        name: "{{ username }}"
+        comment: "{{ comment }}"
+    - name: Display confirmation
+      debug:
+        msg: "User {{ username }} created on {{ inventory_hostname }}"
+
+
+Run:
+
+ansible-playbook create-user.yml
+
+
+✅ Output: Debug messages show different usernames for each host.
+
+🧾 SET B — Templating and Configuration Management
+Step B1 — Create Templates Directory
+mkdir templates
+
+
+templates/index.html.j2
+
+<html>
+  <body>
+    <h1>Welcome to {{ ansible_hostname }}</h1>
+    <p>Server IP: {{ ansible_default_ipv4.address }}</p>
+  </body>
+</html>
+
+
+templates/nginx.conf.j2
+
+server {
+    listen 80;
+    server_name {{ ansible_hostname }};
+    root /var/www/html;
+    index index.html;
+}
+
+Step B2 — Create Playbook to Install and Deploy Nginx
+nano nginx-deploy.yml
+
+---
+- hosts: webservers
+  become: yes
+  tasks:
+    - name: Install Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Deploy nginx.conf
+      ansible.builtin.template:
+        src: templates/nginx.conf.j2
+        dest: /etc/nginx/sites-available/default
+
+    - name: Deploy index.html
+      ansible.builtin.template:
+        src: templates/index.html.j2
+        dest: /var/www/html/index.nginx-debian.html
+
+    - name: Restart Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+
+
+Run:
+
+ansible-playbook nginx-deploy.yml
+
+
+✅ Verify in browser: http://<web1_public_ip> → “Welcome to web1”.
+
+🧱 SET C — Roles and Advanced Variable Management
+Step C1 — Create a Role
+ansible-galaxy init roles/webrole
+
+
+Structure:
+
+roles/
+  webrole/
+    tasks/main.yml
+    templates/
+    vars/main.yml
+
+Step C2 — Define Variables for Role
+
+roles/webrole/vars/main.yml
+
+nginx_port: 80
+page_title: "Ansible Role Deployment"
+
+Step C3 — Create Template for Role
+
+roles/webrole/templates/index.html.j2
+
+<html>
+  <body>
+    <h1>{{ page_title }}</h1>
+    <p>Deployed on {{ ansible_hostname }} IP: {{ ansible_default_ipv4.address }}</p>
+  </body>
+</html>
+
+Step C4 — Define Role Tasks
+
+roles/webrole/tasks/main.yml
+
+---
+- name: Install Nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: yes
+
+- name: Copy index.html template
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: /var/www/html/index.nginx-debian.html
+
+- name: Start Nginx
+  ansible.builtin.service:
+    name: nginx
+    state: started
+
+Step C5 — Create Main Playbook to Use Role
+nano site.yml
+
+---
+- hosts: webservers
+  become: yes
+  roles:
+    - webrole
+
+
+Run:
+
+ansible-playbook site.yml

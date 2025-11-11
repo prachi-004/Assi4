@@ -1,247 +1,75 @@
-Assignment 4 — Ansible Variable Management, Templating, and Roles
-🏗️ 0. Prerequisites (Windows + AWS + WSL Setup)
-Step 0.1 — Install WSL (Ubuntu)
+Set A🌐 Step 1 – Create AWS EC2 Instances
 
-Open PowerShell (Admin) →
+Log in to the AWS Management Console.
 
-wsl --install -d Ubuntu
+Go to ➡️ EC2 → Instances → Launch Instance
 
+Launch 3 Ubuntu 22.04 LTS instances (t2.micro, Free Tier OK).
 
-Restart PC → open Ubuntu → create username & password.
+Name them:
 
-Update packages:
+controller (Ansible Control Node)
 
-sudo apt update && sudo apt upgrade -y
+web1 (Managed Node 1)
 
-☁️ 1. AWS Instance Creation
-Step 1.1 — Launch EC2 Instances
+web2 (Managed Node 2)
 
-You’ll need 3 instances (for Set A) and 2 more (for Set C testing roles cross-OS).
+Key pair: Create one (e.g., ansible-key.pem) → download it.
 
-Purpose	OS	Count	Type
-Control Node (Ansible)	Ubuntu 22.04 LTS	1	t2.micro
-Managed Nodes (Web servers)	Ubuntu 22.04 LTS	2	t2.micro
-Extra (For Set C)	CentOS Stream 9	1	t2.micro
+Security Group:
 
-✅ Total = 4 instances (reuse control node for all sets)
+Inbound rules → allow ports 22 (SSH) and 80 (HTTP)
 
-Step 1.2 — Security Group Rules
+Outbound → allow all.
 
-Inbound rules:
+Launch the instances ✅
 
-Type	Port	Source
-SSH	22	My IP
-HTTP	80	0.0.0.0/0
+cd Downloads
+scp -i "C:\Users\prach\Downloads\mykey.pem" "C:\Users\prach\Downloads\mykey.pem" ubuntu@3.108.236.202:/home/ubuntu/
+ssh -i "mykey.pem" ubuntu@ec2-3-108-236-202.ap-south-1.compute.amazonaws.com    ---> of control node instance
 
-Download the .pem key (e.g., ansible-key.pem).
-
-Step 1.3 — Configure SSH Access from Windows
-
-Move your .pem file to WSL Ubuntu:
-
-mkdir -p ~/.ssh
-cp /mnt/c/Users/<YourName>/Downloads/ansible-key.pem ~/.ssh/
-chmod 400 ~/.ssh/ansible-key.pem
-
-
-Test SSH into each instance:
-
-ssh -i ~/.ssh/ansible-key.pem ubuntu@<public-ip>
-
-⚙️ 2. Install Ansible on Control Node
-
-On Ubuntu (WSL or your AWS control node):
-
-sudo apt update
+sudo apt update -y
+sudo apt install -y python3-pip
 sudo apt install ansible -y
 ansible --version
 
-🧩 SET A — Ansible Variables and Basic Playbooks
-Step A1 — Create Project Structure
+ssh-keygen -y -f ~/mykey.pem > ~/mykey.pub
+chmod 400 ~/mykey.pem
+ssh-keygen -y -f ~/mykey.pem > ~/mykey.pub
+ssh -i ~/mykey.pem ubuntu@13.233.159.98 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys" < ~/mykey.pub    
+ssh -i ~/mykey.pem ec2-user@3.108.220.237 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys" < ~/mykey.pub
+
 mkdir ~/assignment4 && cd ~/assignment4
 mkdir group_vars host_vars
-
-Step A2 — Create Configuration File
 nano ansible.cfg
-
 [defaults]
 inventory = ./inventory
 private_key_file = ~/.ssh/ansible-key.pem
 host_key_checking = False
-
-Step A3 — Create Inventory File
 nano inventory
-
 [webservers]
 web1 ansible_host=<web1-public-ip> ansible_user=ubuntu
 web2 ansible_host=<web2-public-ip> ansible_user=ubuntu
-
-
-Test connectivity:
-
 ansible all -m ping
-
-
-✅ Expected: pong from each host.
-
-Step A4 — Define Variables
-
-group_vars/all.yml
-
+nano group_vars/all.yml
 username: devuser
-comment: "Common application user"
-
-
-host_vars/web1.yml
-
+comment: "Default user for all web servers"
+nano host_vars/web1.yml
 username: adminuser
-comment: "Admin for web1"
+comment: "Admin user for web1 only"
 
-Step A5 — Create Playbook to Use Variables
 nano create-user.yml
-
 ---
 - hosts: all
   become: yes
   tasks:
-    - name: Create user with variables
+    - name: Create user with host/group variables
       ansible.builtin.user:
         name: "{{ username }}"
         comment: "{{ comment }}"
-    - name: Display confirmation
+
+    - name: Display confirmation message
       debug:
         msg: "User {{ username }} created on {{ inventory_hostname }}"
-
-
-Run:
-
+Run it:
 ansible-playbook create-user.yml
-
-
-✅ Output: Debug messages show different usernames for each host.
-
-🧾 SET B — Templating and Configuration Management
-Step B1 — Create Templates Directory
-mkdir templates
-
-
-templates/index.html.j2
-
-<html>
-  <body>
-    <h1>Welcome to {{ ansible_hostname }}</h1>
-    <p>Server IP: {{ ansible_default_ipv4.address }}</p>
-  </body>
-</html>
-
-
-templates/nginx.conf.j2
-
-server {
-    listen 80;
-    server_name {{ ansible_hostname }};
-    root /var/www/html;
-    index index.html;
-}
-
-Step B2 — Create Playbook to Install and Deploy Nginx
-nano nginx-deploy.yml
-
----
-- hosts: webservers
-  become: yes
-  tasks:
-    - name: Install Nginx
-      ansible.builtin.apt:
-        name: nginx
-        state: present
-        update_cache: yes
-
-    - name: Deploy nginx.conf
-      ansible.builtin.template:
-        src: templates/nginx.conf.j2
-        dest: /etc/nginx/sites-available/default
-
-    - name: Deploy index.html
-      ansible.builtin.template:
-        src: templates/index.html.j2
-        dest: /var/www/html/index.nginx-debian.html
-
-    - name: Restart Nginx
-      ansible.builtin.service:
-        name: nginx
-        state: restarted
-
-
-Run:
-
-ansible-playbook nginx-deploy.yml
-
-
-✅ Verify in browser: http://<web1_public_ip> → “Welcome to web1”.
-
-🧱 SET C — Roles and Advanced Variable Management
-Step C1 — Create a Role
-ansible-galaxy init roles/webrole
-
-
-Structure:
-
-roles/
-  webrole/
-    tasks/main.yml
-    templates/
-    vars/main.yml
-
-Step C2 — Define Variables for Role
-
-roles/webrole/vars/main.yml
-
-nginx_port: 80
-page_title: "Ansible Role Deployment"
-
-Step C3 — Create Template for Role
-
-roles/webrole/templates/index.html.j2
-
-<html>
-  <body>
-    <h1>{{ page_title }}</h1>
-    <p>Deployed on {{ ansible_hostname }} IP: {{ ansible_default_ipv4.address }}</p>
-  </body>
-</html>
-
-Step C4 — Define Role Tasks
-
-roles/webrole/tasks/main.yml
-
----
-- name: Install Nginx
-  ansible.builtin.apt:
-    name: nginx
-    state: present
-    update_cache: yes
-
-- name: Copy index.html template
-  ansible.builtin.template:
-    src: index.html.j2
-    dest: /var/www/html/index.nginx-debian.html
-
-- name: Start Nginx
-  ansible.builtin.service:
-    name: nginx
-    state: started
-
-Step C5 — Create Main Playbook to Use Role
-nano site.yml
-
----
-- hosts: webservers
-  become: yes
-  roles:
-    - webrole
-
-
-Run:
-
-ansible-playbook site.yml

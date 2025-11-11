@@ -1,3 +1,9 @@
+1. Launch three new virtual machine instances. All should run an operating system from the Debian family. Dept. of Comp. Sci., S. P. College, Pune 76
+2. Create a project folder containing an ansible.cfg file and an inventory file. The inventory file should contain the details for two managed nodes. Then, establish and test the connection between the Ansible control node and the two managed nodes.
+3. Utilize variables to demonstrate user creation and add comments. Additionally, use the debug module to output the name of the created user and their associated comment.
+4. Generate host_vars and define the variables username and comment for a selected host.
+5. Create group_vars and define the variables username and comment for the 'all' group and at least one other group specified in the inventory.
+
 Set A🌐 Step 1 – Create AWS EC2 Instances
 
 Log in to the AWS Management Console.
@@ -73,3 +79,61 @@ nano create-user.yml
         msg: "User {{ username }} created on {{ inventory_hostname }}"
 Run it:
 ansible-playbook create-user.yml
+
+Set B:
+1. Launch two new virtual machine instances. All should run an operating system from the Debian family.
+2. Create a project folder containing an ansible.cfg file and an inventory file. The inventory file should contain the details for two managed nodes. Then, establish and test the connection between the Ansible control node and the two managed nodes.
+3. Generate a templates directory containing the necessary files:
+● Create index.html.j2 file and dipay ansible_hostname and ansible_default_ipv4.address use jinja2 formatting to accomplish the task.
+● Create and edit the nginx.conf.j2 file using Jinja2 templating to define the necessary NGINX configuration.
+4. Write playbook to install Nginx server on all hosts present in inventory file.
+5. Create a separate Ansible playbook. This playbook should copy the nginx.conf.j2 file to /etc/nginx/sites-available/[example.com].conf on all target servers.
+6. Develop an independent Ansible playbook. This playbook's purpose is to replace the content within index.nginx-debian.html with the index.html.j2 file, and this change should be applied to all designated target servers.
+
+mkdir templates
+cd templates
+nano index.html.j2
+<html>
+  <body>
+    <h1>Welcome to {{ ansible_hostname }}</h1>
+    <p>IP Address: {{ ansible_default_ipv4.address }}</p>
+    <p>Managed by Ansible Automation</p>
+  </body>
+</html>
+
+nano nginx.conf.j2
+server {
+    listen 80;
+    server_name {{ ansible_hostname }};
+    root /var/www/html;
+    index index.html;
+}
+cd ~/assignment4
+nano nginx-deploy.yml
+---
+- name: Deploy Nginx and custom index page
+  hosts: webservers
+  become: yes
+
+  tasks:
+    - name: Install Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Deploy Nginx configuration from template
+      ansible.builtin.template:
+        src: templates/nginx.conf.j2
+        dest: /etc/nginx/sites-available/default
+
+    - name: Deploy custom index.html
+      ansible.builtin.template:
+        src: templates/index.html.j2
+        dest: /var/www/html/index.nginx-debian.html
+
+    - name: Restart Nginx to apply changes
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+ansible-playbook nginx-deploy.yml

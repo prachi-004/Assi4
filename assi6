@@ -1,0 +1,19 @@
+Seta
+Open terminal
+python3 -m venv venv
+source venv/bin/activate
+pip install mlflow
+ terminal 2
+source venv/bin/activate
+pip install notebook
+jupyter notebook
+search mlflow>click doc>model training>open source>getting started with mlflow>
+starting with ur model/server>cpy paste url and change port to 5000>using mlflow client api>cpy and paste in jupyter>creating exp>cpy all till login
+Set b
+click hyperparameter>cpy only dependancies and paste on notebook>prepare data>define>setuphyp>runhyp>click on analyzeresult>click winequalityoptiz
+click colun>follow documentation
+SETC  
+cpy code of deploy and add other>cpy in new terminal>cpy test and add [0]
+new ter
+paste code buildproduction comtsiner test ur container only docker run -p 5003-8080 wine-quality-api
+open another terminal and copy code and test in that terminal

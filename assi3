@@ -1,0 +1,282 @@
+Create 3 instances 
+1.Control
+2.Debian
+3.RedHat
+For all 3 instances key:mykey.pem
+For all 3 instances select SSH port 22 
+
+SET A. Q1 & Q2
+In Command prompt:
+cd Downloads
+STEP 1: Copy mykey.pem to control node
+scp -i "C:\Users\prach\Downloads\mykey.pem" "C:\Users\prach\Downloads\mykey.pem" ubuntu@3.108.236.202:/home/ubuntu/
+⦁	Connecting control node to ubantu:
+ssh -i "mykey.pem" ubuntu@ec2-3-108-236-202.ap-south-1.compute.amazonaws.com    ---> of control node instance
+
+STEP 2: Insatll Ansible
+sudo apt update -y
+sudo apt install -y python3-pip
+sudo apt install ansible -y
+ansible --version
+
+Step 3: Copy mykey.pem to mykey.pub so that it can be used in ubantu by other managed nodes]Debain or RedHat]
+ssh-keygen -y -f ~/mykey.pem > ~/mykey.pub
+
+chmod 400 ~/mykey.pem     ---> We are making it secure
+
+ssh-keygen -y -f ~/mykey.pem > ~/mykey.pub
+
+Connecting mykey.pub to Debian and redhat so that they get logged in without using passwords
+ ssh -i ~/mykey.pem ubuntu@13.233.159.98 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys" < ~/mykey.pub    ---->Debian 
+ssh -i ~/mykey.pem ec2-user@3.108.220.237 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys" < ~/mykey.pub   ----->RedHat
+
+
+Step 4: Create project folder:
+sudo mkdir /ansible-asssignment3
+cd ansible-assignment3
+
+sudo nano ansible.cfg
+
+[defaults]
+inventory = ./inventory
+private_key_file = /home/ubuntu/mykey.pem       ------>[Note: make sure mykey.pem is correct key name]
+host_key_checking = False
+interpreter_python = /usr/bin/python3
+timeout = 30
+
+
+
+ sudo nano inventory   ----->[Note: ansible_host should be the public IPs] so make sure u change them
+    
+[debian]
+debian1 ansible_host=13.233.159.98 ansible_user=ubuntu         
+
+[redhat]
+redhat1 ansible_host=3.108.220.237 ansible_user=ec2-user
+
+Using this u can check if Debian & RedHat is running without password 
+
+ansible -m ping all
+
+
+SETA. Q3
+Step: Run Ad-hoc Commands
+1️⃣ Install web servers
+ansible debian -b -m apt -a "name=apache2 state=present update_cache=yes"
+ansible redhat -b -m yum -a "name=httpd state=present"
+
+2️⃣ Start services
+ansible debian -b -m service -a "name=apache2 state=started"
+ansible redhat -b -m service -a "name=httpd state=started"
+
+3️⃣ Copy a file
+ansible all -m copy -a "src=/etc/hosts dest=/tmp/hosts_copy"
+
+4️⃣ Create a directory
+ansible all -m file -a "path=/tmp/testdir state=directory mode=0755"
+
+5️⃣ Create a user
+ansible all -b -m user -a "name=alice state=present createhome=yes"
+
+6️⃣ Gather system facts
+ansible all -m setup
+
+SET B
+
+Create three managed nodes (you already have two; add one more if possible)
+
+mkdir playbooks
+cd playbooks
+
+Playbook 1 — Update OS and install Java:
+nano install_java.yml
+---
+- name: Update system and install Java
+  hosts: all
+  become: yes
+  tasks:
+    - name: Update package list on Debian family
+      apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Update packages on RedHat family
+      yum:
+        name: "*"
+        state: latest
+      when: ansible_os_family == "RedHat"
+
+    - name: Install Java on Debian
+      apt:
+        name: openjdk-11-jdk
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install Java on RedHat
+      yum:
+        name: java-11-openjdk-devel
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Check Java version
+      command: java -version
+      register: javaver
+      ignore_errors: yes
+
+    - debug:
+        var: javaver.stderr_lines
+
+
+
+Now run the ansible playbooks using:
+ansible-playbook -i ~/inventory ~/playbook/install_java.yml
+Output should be:
+✅ Expected: “TASK [Install Java] → changed = 1” or “ok = X”.
+
+Playbook 2 — Install and start Nginx (on Debian only)
+
+
+
+nano install_nginx.yml
+
+---
+- name: Install and start Nginx on Debian servers
+  hosts: debian
+  become: yes
+  tasks:
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Start and enable Nginx
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+Run it :
+ansible-playbook install_nginx.yml
+
+[Note: If u are getting any error or red mark then check if the port 80 is empty or mot or if njinx is installed or not]
+By using : sudo lsof -i :80  ----> check if port 80 is used by some else e.g apache
+       If used by apache then stop it by :   sudo systemctl stop apache2
+Or if NGINX Is not installed then install it using :
+
+sudo systemctl start nginx
+sudo systemctl enable nginx
+sudo systemctl status nginx
+
+
+DONE
+
+
+Playbook 3 — Create multiple users on all nodes
+
+nano add_users.yml
+
+---
+- name: Create multiple users
+  hosts: all
+  become: yes
+  vars:
+    users:
+      - alice
+      - bob
+      - carol
+  tasks:
+    - name: Add users
+      user:
+        name: "{{ item }}"
+        state: present
+        createhome: yes
+      loop: "{{ users }}"
+
+
+ansible-playbook add_users.yml
+
+ansible all -a "cat /etc/passwd | grep alice"
+
+
+
+set c
+sudo apt update
+sudo apt install awscli python3-boto3 -y
+4 – Configure AWS Credentials
+aws configure
+AWS Access Key ID [None]: <your_access_key>
+AWS Secret Access Key [None]: <your_secret_key>
+Default region name [None]: ap-south-1
+Default output format [None]: json
+python3
+>>> import boto3
+>>> ec2 = boto3.client('ec2')
+>>> ec2.describe_instances()
+>>> exit()
+mkdir ~/assignment3 && cd ~/assignment3
+nano dynamic_inventory.py
+#!/usr/bin/env python3
+import boto3, json
+
+def get_instances():
+    ec2 = boto3.resource('ec2', region_name='ap-south-1')
+    instances = ec2.instances.filter(Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
+    hosts = {'all': {'hosts': []}}
+
+    for i in instances:
+        for tag in i.tags or []:
+            if tag['Key'] == 'Name':
+                name = tag['Value']
+        hosts['all']['hosts'].append(i.public_ip_address)
+
+    print(json.dumps(hosts, indent=2))
+
+if __name__ == "__main__":
+    get_instances()
+
+
+chmod +x dynamic_inventory.py
+./dynamic_inventory.py
+{
+  "all": {
+    "hosts": [
+      "13.233.xxx.xxx",
+      "13.126.xxx.xxx"
+    ]
+  }
+}
+
+nano ansible.cfg
+[defaults]
+inventory = ./dynamic_inventory.py
+host_key_checking = False
+private_key_file = ~/.ssh/ansible-key.pem
+
+ansible all -m ping
+
+ansible all -a "hostname"
+ansible all -a "uptime"
+ansible all -m apt -a "name=nginx state=present" --become
+ansible all -m service -a "name=nginx state=started" --become
+
+nano install-nginx.yml
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Install nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: yes
+    - name: Start nginx
+      ansible.builtin.service:
+        name: nginx
+        state: started
+ansible-playbook install-nginx.yml
+
+
+
+
+

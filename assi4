@@ -137,3 +137,171 @@ nano nginx-deploy.yml
         name: nginx
         state: restarted
 ansible-playbook nginx-deploy.yml
+
+Set C:
+1. Launch two new virtual machine instances. The first should run an operating system from the Debian family, and the second should run one from the Red Hat family.
+2. Create a project folder containing an ansible.cfg file and an inventory file. The inventory file should contain the details for two managed nodes. Then, establish and test the connection between the Ansible control node and the two managed nodes.
+3. Create an Ansible role named "apache" designed to serve an HTML page displaying the hostname and IPv4 address on an Apache server. This role should be used in playbooks targeting servers within the Debian family.
+4. Create an Ansible role named "httpd" designed to serve an HTML page displaying the hostname and IPv4 address on an httpd server. This role should be used in playbooks targeting servers within the RedHat family.
+1 – Pre-check Before You Start
+
+From Set B, you should already have:
+
+~/assignment4/
+├── ansible.cfg
+├── inventory
+├── group_vars/
+├── host_vars/
+├── templates/
+├── create-user.yml
+└── nginx-deploy.yml
+
+
+Verify Ansible connection one more time:
+
+cd ~/assignment4
+ansible all -m ping
+
+
+✅ pong responses mean you’re ready.
+
+⚙️ 2 – Create a Role Structure
+
+Roles keep your playbooks clean by splitting tasks, templates, and variables into folders.
+
+ansible-galaxy init roles/webrole
+
+
+It creates:
+
+roles/webrole/
+├── defaults/
+├── files/
+├── handlers/
+├── meta/
+├── tasks/
+├── templates/
+├── tests/
+└── vars/
+
+
+We’ll use tasks/, templates/, and vars/.
+
+🧾 3 – Add Variables to the Role
+
+Create roles/webrole/vars/main.yml →
+
+nano roles/webrole/vars/main.yml
+
+nginx_port: 80
+page_title: "Deployed by Ansible Role"
+message: "This page is automatically configured via Ansible roles."
+
+🧩 4 – Add a Template for the Role
+
+Create roles/webrole/templates/index.html.j2
+
+nano roles/webrole/templates/index.html.j2
+
+<html>
+  <body style="font-family:Arial; text-align:center; margin-top:60px;">
+    <h1>{{ page_title }}</h1>
+    <h3>Server: {{ ansible_hostname }}</h3>
+    <p>IP: {{ ansible_default_ipv4.address }}</p>
+    <p>{{ message }}</p>
+  </body>
+</html>
+
+🧱 5 – Define Tasks in the Role
+
+Create roles/webrole/tasks/main.yml
+
+nano roles/webrole/tasks/main.yml
+
+---
+- name: Install Nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: yes
+
+- name: Deploy custom homepage
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: /var/www/html/index.nginx-debian.html
+
+- name: Ensure Nginx is started
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: yes
+
+🧩 6 – ( Optional ) Add a Handler
+
+If you want Nginx to restart only when templates change, create:
+roles/webrole/handlers/main.yml
+
+---
+- name: restart nginx
+  ansible.builtin.service:
+    name: nginx
+    state: restarted
+
+
+Then, in tasks/main.yml, replace the last two tasks with:
+
+- name: Deploy custom homepage
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: /var/www/html/index.nginx-debian.html
+  notify: restart nginx
+
+🧾 7 – Create Main Playbook That Uses the Role
+
+Back in your project root:
+
+nano site.yml
+
+---
+- name: Web Server Deployment via Role
+  hosts: webservers
+  become: yes
+  roles:
+    - webrole
+
+▶️ 8 – Run the Playbook
+ansible-playbook site.yml
+
+
+✅ Expected output:
+
+TASK [webrole : Install Nginx] ******************
+changed: [web1]
+changed: [web2]
+
+TASK [webrole : Deploy custom homepage] *********
+changed: [web1]
+changed: [web2]
+
+TASK [webrole : Ensure Nginx is started] ********
+ok: [web1]
+ok: [web2]
+
+PLAY RECAP *************************************
+web1 : ok=3 changed=2
+web2 : ok=3 changed=2
+
+🌍 9 – Verify on Browser
+
+Open:
+
+http://<web1-public-ip>
+http://<web2-public-ip>
+
+
+You should see:
+
+Deployed by Ansible Role
+Server: web1
+IP: 172.xx.xx.xx
+This page is automatically configured via Ansible roles.

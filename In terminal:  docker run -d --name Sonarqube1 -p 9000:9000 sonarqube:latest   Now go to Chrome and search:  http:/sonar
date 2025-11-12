@@ -1,0 +1,61 @@
+In terminal:
+
+docker run -d --name Sonarqube1 -p 9000:9000 sonarqube:latest
+
+
+Now go to Chrome and search:
+http://localhost:9000
+
+Login using:
+username: admin
+password: admin
+Change the password with a new one.
+Then go to:
+Project → Manually → Project Name → Project Key → Setup Locally → Administrator (My Account)
+In the right corner, go to:
+
+Security → Generate Token → Name → Type (User) → Copy Token
+
+In Jenkins:
+Login to Jenkins
+Click New Item
+
+Select Pipeline
+
+Paste the pipeline given by sir
+
+Then:
+
+Check if the JDK and Maven name in the system tools are same or not.
+
+If not, change it.
+→ Go to Manage Jenkins → Tools → then check.
+
+Then:
+
+Check Sonar Scanner installation name — it should be the same as mentioned in the file given by sir.
+
+If not, change it to match.
+
+Then:
+
+Check SonarQube name in Sonar Scanner configuration.
+
+Then go to:
+
+Manage Jenkins → Credentials → Global → Add Credentials
+
+
+Choose Secret text
+
+Paste the token you copied earlier
+
+Save it
+
+Then go to:
+
+Manage Jenkins → System → SonarQube Installation
+
+In Authentication, choose your created credentials.
+
+Finally, run the build now.
